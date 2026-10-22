@@ -1,0 +1,36 @@
+# User data - never commit databases, logs or backups
+*.db
+*.db-wal
+*.db-shm
+*.log
+backups/
+
+# Build and packaging output
+build/
+build_out/
+dist/
+dist-release/
+Output/
+*.spec.bak
+
+# In-app downloaded installers
+.update-*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Local extras
+files.zip
+AI Prompt of Instruction.txt
