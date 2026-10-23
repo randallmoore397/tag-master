@@ -3250,6 +3250,9 @@ def _remove_file(path):
 
 
 def update_loop():
+    # Let the startup cloud pull finish before checking. Otherwise a pull can
+    # overwrite update_last_check/update_latest right after the check writes it.
+    time.sleep(60)
     while True:
         try:
             con = connect()
