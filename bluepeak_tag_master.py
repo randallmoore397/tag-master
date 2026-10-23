@@ -56,7 +56,7 @@ if os.path.exists(_OLD_DB) and not os.path.exists(DB_PATH):
         if os.path.exists(_OLD_DB + _suffix):
             os.rename(_OLD_DB + _suffix, DB_PATH + _suffix)
 DEFAULT_PORT = 8765
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"
 SCHEMA_VERSION = 4
 UPDATE_MAX_BYTES = 250 * 1024 * 1024
 UPDATE_CHECK_HOURS = 12
