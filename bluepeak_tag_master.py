@@ -2825,6 +2825,7 @@ def api_settings_put(h, con, q):
 # SQLite Cloud
 # --------------------------------------------------------------------------
 _cloud_lock = threading.Lock()
+_cloud_first_done = threading.Event()
 
 
 def cloud_config(con):
@@ -3252,7 +3253,7 @@ def _remove_file(path):
 def update_loop():
     # Let the startup cloud pull finish before checking. Otherwise a pull can
     # overwrite update_last_check/update_latest right after the check writes it.
-    time.sleep(60)
+    _cloud_first_done.wait(180)
     while True:
         try:
             con = connect()
@@ -3665,10 +3666,14 @@ def cloud_loop():
                 con.close()
             if not cloud_ready(cfg):
                 first = True
+                _cloud_first_done.set()
             elif first:
                 first, last_auto = False, time.time()
-                if cfg["start"]:
-                    _startup_sync(cfg)
+                try:
+                    if cfg["start"]:
+                        _startup_sync(cfg)
+                finally:
+                    _cloud_first_done.set()
             elif cfg["auto"] and time.time() - last_auto >= cfg["auto"]:
                 last_auto = time.time()
                 try:
