@@ -3134,7 +3134,7 @@ def _update_result(con):
 
 def _run_update_check(con, url=None):
     st = get_settings(con)
-    feed = str(url if url is not None else (st.get("update_url") or UPDATE_FEED_URL)).strip()
+    feed = str(url if url is not None else UPDATE_FEED_URL).strip()
     feed = _check_update_url(feed)
     try:
         man = _fetch_update_manifest(feed)
@@ -3229,8 +3229,7 @@ def _download_and_install(con, man):
 
 
 def api_update_install(h, con, q):
-    st = get_settings(con)
-    feed = str(h.body().get("url") or st.get("update_url", "") or UPDATE_FEED_URL).strip()
+    feed = str(h.body().get("url") or UPDATE_FEED_URL).strip()
     man = _fetch_update_manifest(feed)
     if _version_key(man["version"]) <= _version_key(APP_VERSION):
         raise ApiError(400, "You are already using the latest version.")

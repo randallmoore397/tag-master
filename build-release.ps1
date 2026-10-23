@@ -91,7 +91,7 @@ try {
     Write-Host "  SHA-256   : $hash"
     Write-Host ""
     Write-Host "Upload the installer and manifest to: $base"
-    Write-Host "Then set the manifest URL in Settings > App updates."
+    Write-Host "Installed copies will check this feed and update automatically."
 }
 finally {
     Pop-Location

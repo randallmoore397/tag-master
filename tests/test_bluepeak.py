@@ -3,11 +3,14 @@
 Run with:  python -m unittest discover -s tests
 """
 import base64
+import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -176,6 +179,24 @@ class CloudPushTests(AppTestCase):
                          self.con.execute("SELECT COUNT(*) FROM users").fetchone()[0])
 
 
+class _FakeResponse:
+    def __init__(self, data):
+        self.data = data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self, size=-1):
+        if not self.data:
+            return b""
+        out = self.data if not size or size < 0 else self.data[:size]
+        self.data = self.data[len(out):]
+        return out
+
+
 class UpdateTests(AppTestCase):
     def test_version_comparison(self):
         self.assertLess(self.app._version_key("1.3.9"), self.app._version_key("1.4.0"))
@@ -206,6 +227,44 @@ class UpdateTests(AppTestCase):
         with mock.patch.object(self.app, "_fetch_update_manifest", return_value=manifest):
             with self.assertRaises(self.app.ApiError):
                 self.app.api_update_install(FakeRequest({}, self.admin()), self.con, {})
+
+    def test_auto_install_downloads_verifies_and_starts_installer(self):
+        payload = b"MZ" + b"x" * 4096
+        manifest = {"version": "9.9.9", "url": "https://example.com/setup.exe",
+                    "sha256": hashlib.sha256(payload).hexdigest(), "notes": ""}
+        tmp = tempfile.mkdtemp()
+        old_base = self.app.BASE_DIR
+        self.app.BASE_DIR = tmp
+        try:
+            with mock.patch.object(self.app.urllib.request, "urlopen",
+                                   return_value=_FakeResponse(payload)), \
+                    mock.patch.object(self.app.subprocess, "Popen") as popen, \
+                    mock.patch.object(self.app.threading, "Timer") as timer:
+                res = self.app._download_and_install(self.con, manifest)
+            self.assertEqual(res, {"ok": True, "version": "9.9.9"})
+            popen.assert_called_once()
+            timer.assert_called_once()
+        finally:
+            self.app.BASE_DIR = old_base
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_auto_install_rejects_bad_checksum(self):
+        payload = b"MZ" + b"x" * 4096
+        manifest = {"version": "9.9.9", "url": "https://example.com/setup.exe",
+                    "sha256": "0" * 64, "notes": ""}
+        tmp = tempfile.mkdtemp()
+        old_base = self.app.BASE_DIR
+        self.app.BASE_DIR = tmp
+        try:
+            with mock.patch.object(self.app.urllib.request, "urlopen",
+                                   return_value=_FakeResponse(payload)), \
+                    mock.patch.object(self.app.subprocess, "Popen") as popen:
+                with self.assertRaises(self.app.ApiError):
+                    self.app._download_and_install(self.con, manifest)
+            popen.assert_not_called()
+        finally:
+            self.app.BASE_DIR = old_base
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class AuditPagingTests(AppTestCase):
