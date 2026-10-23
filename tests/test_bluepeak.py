@@ -189,19 +189,19 @@ class UpdateTests(AppTestCase):
         self.assertEqual(ctx.exception.status, 400)
 
     def test_check_reports_newer_version(self):
-        manifest = {"version": "1.5.0", "url": "https://example.com/setup.exe",
+        manifest = {"version": "9.9.9", "url": "https://example.com/setup.exe",
                     "sha256": "a" * 64, "notes": "Fixes and polish"}
         body = {"url": "https://example.com/update.json"}
         with mock.patch.object(self.app, "_fetch_update_manifest", return_value=manifest):
             res = self.app.api_update_check(FakeRequest(body, self.admin()), self.con, {})
         self.assertTrue(res["available"])
-        self.assertEqual(res["latest"], "1.5.0")
+        self.assertEqual(res["latest"], "9.9.9")
         self.assertEqual(res["version"], self.app.APP_VERSION)
         st = self.app.get_settings(self.con)
         self.assertEqual(st["update_url"], "https://example.com/update.json")
 
     def test_install_rejects_unsigned_manifest(self):
-        manifest = {"version": "1.5.0", "url": "https://example.com/setup.exe",
+        manifest = {"version": "9.9.9", "url": "https://example.com/setup.exe",
                     "sha256": "", "notes": ""}
         with mock.patch.object(self.app, "_fetch_update_manifest", return_value=manifest):
             with self.assertRaises(self.app.ApiError):

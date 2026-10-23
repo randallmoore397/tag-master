@@ -87,7 +87,7 @@ try {
     Write-Host "  Installer : $base/BluePeak-TAG-Master-Setup.exe"
     Write-Host "  Feed URL  : $base/update-manifest.json"
     Write-Host ""
-    Write-Host "Paste the feed URL into Settings > App updates."
+    Write-Host "Installed copies will check this feed and update automatically."
 }
 finally {
     Pop-Location

@@ -56,10 +56,11 @@ if os.path.exists(_OLD_DB) and not os.path.exists(DB_PATH):
         if os.path.exists(_OLD_DB + _suffix):
             os.rename(_OLD_DB + _suffix, DB_PATH + _suffix)
 DEFAULT_PORT = 8765
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.5.0"
 SCHEMA_VERSION = 4
 UPDATE_MAX_BYTES = 250 * 1024 * 1024
 UPDATE_CHECK_HOURS = 12
+UPDATE_FEED_URL = "https://github.com/randallmoore397/tag-master/releases/latest/download/update-manifest.json"
 
 STATUSES = ["In stock", "Assigned", "In repair", "Lost", "Retired"]
 
@@ -84,7 +85,7 @@ DEFAULT_SETTINGS = {
     "cloud_last_error": "",
     "cloud_last_error_at": "",
     "cloud_fp": "",
-    "update_url": "",
+    "update_url": UPDATE_FEED_URL,
     "update_auto": "1",
     "update_last_check": "",
     "update_latest": "",
@@ -3133,9 +3134,7 @@ def _update_result(con):
 
 def _run_update_check(con, url=None):
     st = get_settings(con)
-    feed = str(url if url is not None else st.get("update_url", "")).strip()
-    if not feed:
-        raise ApiError(400, "Enter the update address in Settings first.")
+    feed = str(url if url is not None else (st.get("update_url") or UPDATE_FEED_URL)).strip()
     feed = _check_update_url(feed)
     try:
         man = _fetch_update_manifest(feed)
@@ -3181,12 +3180,7 @@ def api_update_check(h, con, q):
     return _update_result(con)
 
 
-def api_update_install(h, con, q):
-    st = get_settings(con)
-    feed = str(h.body().get("url") or st.get("update_url", "")).strip()
-    man = _fetch_update_manifest(feed)
-    if _version_key(man["version"]) <= _version_key(APP_VERSION):
-        raise ApiError(400, "You are already using the latest version.")
+def _download_and_install(con, man):
     package = man["url"]
     if not package:
         raise ApiError(400, "The update file does not contain a download address.")
@@ -3234,6 +3228,15 @@ def api_update_install(h, con, q):
     return {"ok": True, "version": man["version"]}
 
 
+def api_update_install(h, con, q):
+    st = get_settings(con)
+    feed = str(h.body().get("url") or st.get("update_url", "") or UPDATE_FEED_URL).strip()
+    man = _fetch_update_manifest(feed)
+    if _version_key(man["version"]) <= _version_key(APP_VERSION):
+        raise ApiError(400, "You are already using the latest version.")
+    return _download_and_install(con, man)
+
+
 def _shutdown_for_update():
     write_log("Updating: shutting down for the installer.")
     time.sleep(0.8)
@@ -3260,20 +3263,24 @@ def update_loop():
             con = connect()
             try:
                 st = get_settings(con)
-                if st.get("update_auto") == "1" and st.get("update_url"):
-                    last = st.get("update_last_check", "")
-                    due = True
-                    if last:
-                        try:
-                            then = datetime.strptime(last, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                            due = (datetime.now(timezone.utc) - then).total_seconds() >= UPDATE_CHECK_HOURS * 3600
-                        except ValueError:
-                            due = True
-                    if due:
-                        try:
-                            _run_update_check(con)
-                        except ApiError as e:
-                            write_log("Update check failed: %s" % e)
+                last = st.get("update_last_check", "")
+                due = True
+                if last:
+                    try:
+                        then = datetime.strptime(last, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                        due = (datetime.now(timezone.utc) - then).total_seconds() >= UPDATE_CHECK_HOURS * 3600
+                    except ValueError:
+                        due = True
+                if due:
+                    try:
+                        man, newer = _run_update_check(con)
+                        if newer:
+                            write_log("Update available: %s. Installing automatically." % man["version"])
+                            _download_and_install(con, man)
+                    except ApiError as e:
+                        write_log("Update check failed: %s" % e)
+                        _put_settings(con, {"update_error": str(e)[:400],
+                                            "update_last_check": ""})
             finally:
                 con.close()
         except Exception as e:
@@ -3723,6 +3730,8 @@ def main():
     if cloud_ready(cfg):
         print("  SQLite Cloud %s  (database %s)" % (mask_url(cfg["url"]), cfg["database"]))
         threading.Thread(target=cloud_loop, name="cloud-sync", daemon=True).start()
+    else:
+        _cloud_first_done.set()
     if created:
         print("")
         print("  First sign-in   username: %s   password: %s" % DEFAULT_ADMIN)
@@ -4053,13 +4062,8 @@ dialog::backdrop{background:rgba(7,14,38,.58);backdrop-filter:blur(2px)}
 @keyframes tin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .loading{color:var(--muted);padding:40px 0;text-align:center}
 .errbar{display:flex;align-items:center;gap:12px;background:var(--bad-soft);color:var(--bad);border-bottom:1px solid var(--bad);padding:10px 24px;font-weight:600;font-size:14px}
+.errbar[hidden]{display:none}
 .errbar span{flex:1;min-width:0;overflow-wrap:anywhere}
-.updbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:linear-gradient(90deg,color-mix(in srgb,var(--info) 11%,var(--surface)),var(--surface) 70%);border-bottom:1px solid color-mix(in srgb,var(--info) 32%,var(--line));padding:10px 24px;font-weight:600;font-size:13.5px}
-.updbar[hidden]{display:none}
-.updbar .upd-ico{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--info-soft);color:var(--info);flex:none}
-.updbar .upd-txt{flex:1;min-width:200px}
-.updbar .upd-txt b{font-weight:800}
-.updbar .upd-txt .sub{font-size:12.5px;font-weight:500}
 
 /* the TAG label (a physical sticker, so it always stays white) */
 .label{--u:1.4;--fs:3.2;width:calc(var(--u)*50mm);height:calc(var(--u)*25mm);background:#fff;color:#0B1A45;border:.25mm solid #8A94B0;border-radius:calc(var(--u)*1.6mm);padding:calc(var(--u)*1.8mm) calc(var(--u)*2.4mm) calc(var(--u)*1.4mm) calc(var(--u)*4mm);display:flex;flex-direction:column;justify-content:space-between;font-family:var(--font);position:relative;overflow:hidden;box-sizing:border-box;flex:none}
@@ -4244,7 +4248,6 @@ td.ed:hover{background:var(--primary-soft)}
       <div class="usermenu"><button class="userbtn" id="userBtn" aria-haspopup="true"></button><div class="pop" id="userPop" hidden><button id="popPw"></button><button id="popOut"></button><button id="popExit" hidden></button></div></div>
     </header>
     <div id="errbar" class="errbar" hidden role="alert"></div>
-    <div id="updbar" class="updbar" hidden role="status"></div>
     <main id="view" class="content"></main>
   </div>
 </div>
@@ -4379,26 +4382,6 @@ function paintSync(c){
 }
 function paintSideDb(){const el=$('#sideDb');if(!el)return;const cloud=S.cloud||{},loc=S.dbFile||'local database';
   el.textContent=(cloud.enabled&&cloud.database)?('Local: '+loc+'  |  Cloud: '+cloud.database):('Local: '+loc)}
-async function loadUpdate(){
-  if(!S.user||S.user.role!=='admin'){paintUpdate(null);return}
-  try{const u=await api('/update');S.update=u;paintUpdate(u)}catch(e){}
-}
-function paintUpdate(u){
-  const bar=$('#updbar');if(!bar)return;
-  if(!u||!u.available){bar.hidden=true;bar.innerHTML='';return}
-  bar.innerHTML=`<span class="upd-ico">${icon('refresh',16)}</span><span class="upd-txt">Version <b>${esc(u.latest)}</b> of TAG Master is available.${u.notes?`<div class="sub">${esc(u.notes)}</div>`:''}</span>${can('admin')?'<button class="btn sm primary" id="updNow">Update now</button>':''}<button class="btn sm" id="updLater">Later</button>`;
-  bar.hidden=false;
-  const now=$('#updNow',bar);if(now)now.onclick=installUpdate;
-  $('#updLater',bar).onclick=()=>{bar.hidden=true};
-}
-async function installUpdate(){
-  const u=S.update||{};
-  const ok=await confirmBox({title:'Update TAG Master?',body:`TAG Master will close, install version <b>${esc(u.latest||'')}</b> and start again. Your database and settings are kept.`,ok:'Update now'});
-  if(!ok)return;
-  toast('Downloading update...');
-  try{await api('/update/install',{method:'POST',body:{}});toast('Installing update...')}
-  catch(e){fail(e.message)}
-}
 function cloudStatHTML(c){
   const counts=c.counts||{};
   return `<dt>Cloud connection</dt><dd>${c.enabled?(c.url?esc(c.url)+' &rarr; <b>'+esc(c.database||'')+'</b>':'Enabled, but no address saved yet'):'Cloud sync is off'}</dd>
@@ -5226,15 +5209,8 @@ async function viewSettings(el){
         <div class="form-actions"><button class="btn primary" type="submit">Save settings</button><button class="btn" type="button" id="cloudTest">Test connection</button><button class="btn" type="button" id="cloudPush">Push now</button><button class="btn danger" type="button" id="cloudPull">Pull now</button><span id="cloudMsg" style="font-weight:600"></span></div>
       </form>
       <dl class="kv" id="cloudStat" style="margin-top:18px"></dl></section>
-    <section class="panel full"><div class="panel-lead"><div class="panel-title"><h2>App updates</h2><p class="sub">Point every copy at one update file. When you publish a newer version, each installation can download and install it from here.</p></div><span class="panel-badge">${icon('refresh')}</span></div>
-      <form id="updForm" autocomplete="off">
-        <div class="fgrid" style="margin-top:4px">
-          <label class="field span2"><span>Update feed address</span><input class="inp" style="font-family:var(--mono);font-size:13px" name="url" value="${esc(u.url||'')}" maxlength="500" placeholder="https://your-site.example/bluepeak-update.json"><small>A small JSON file with the newest <b>version</b>, the installer <b>url</b> and its <b>sha256</b> checksum. HTTPS only. The address syncs through SQLite Cloud so other copies can use it too.</small></label>
-          <label class="check span2"><input type="checkbox" name="auto" ${u.auto?'checked':''}> Check for updates automatically (twice a day)</label>
-        </div>
-        <div class="form-actions"><button class="btn primary" type="submit">Save update settings</button><button class="btn" type="button" id="updCheck">${icon('refresh',16)} Check now</button><button class="btn" type="button" id="updInstall" ${u.available?'':'hidden'}>Install update</button><span id="updMsg" style="font-weight:600"></span></div>
-      </form>
-      <dl class="kv" id="updStat" style="margin-top:18px"></dl></section>
+    <section class="panel full"><div class="panel-lead"><div class="panel-title"><h2>Automatic updates</h2><p class="sub">TAG Master checks for a newer version twice a day. When one is available it downloads, verifies and installs it automatically, then starts again. Updates cannot be switched off.</p></div><span class="panel-badge">${icon('refresh')}</span></div>
+      <dl class="kv" id="updStat" style="margin-top:4px"></dl></section>
     <section class="panel full"><h2>Your data</h2><p class="sub" style="margin-top:4px">TAG Master works from the local SQLite file on this computer, and mirrors it to SQLite Cloud when that is switched on. Download a backup before moving to a new PC or making large changes.</p>
       <dl class="kv">
         <dt>Database in use (local)</dt><dd class="mono-sm"><b>${esc(m.db_file)}</b> &mdash; ${esc(m.db_path)}</dd>
@@ -5280,23 +5256,14 @@ async function viewSettings(el){
   $('#cloudPush').onclick=async()=>{say('Pushing...');try{const r=await api('/cloud/push',{method:'POST',body:cbody()});toast('Pushed '+num(r.rows||0)+' rows to SQLite Cloud');say('Pushed '+num(r.rows||0)+' rows');await loadMeta();await refresh()}catch(err){say(err.message,true);await refresh()}};
   $('#cloudPull').onclick=async()=>{const ok=await confirmBox({title:'Pull from SQLite Cloud?',body:'This replaces the local copy with the copy held in SQLite Cloud. A backup of the local file is saved first.',ok:'Pull now',danger:true});if(!ok)return;say('Pulling...');try{const r=await api('/cloud/pull',{method:'POST',body:cbody()});toast('Pulled '+num(r.rows||0)+' rows from SQLite Cloud');say('Pulled '+num(r.rows||0)+' rows');await loadMeta();await refresh();route()}catch(err){say(err.message,true);await refresh()}};
   $('#cloudStat').innerHTML=cloudStatHTML(c);
-  const uf=$('#updForm'),umsg=$('#updMsg');
   const paintU=()=>{
     $('#updStat').innerHTML=`<dt>Current version</dt><dd><b>${esc(u.version||'')}</b></dd>
-      <dt>Update feed</dt><dd>${u.url?esc(u.url):'Not set'}</dd>
-      <dt>Last check</dt><dd>${u.last_check?fmtDT(u.last_check):'Never'}</dd>
-      ${u.available?`<dt>Available</dt><dd><b>${esc(u.latest)}</b>${u.notes?`<div class="sub">${esc(u.notes)}</div>`:''}</dd>`:''}
-      ${u.error?`<dt>Last error</dt><dd style="color:var(--bad);font-weight:600">${esc(u.error)}</dd>`:''}`;
-    $('#updInstall').hidden=!u.available;
+      <dt>Automatic updates</dt><dd><b style="color:var(--ok)">On</b> &mdash; checked twice a day and installed automatically</dd>
+      <dt>Last check</dt><dd>${u.last_check?fmtDT(u.last_check):'Not checked yet'}</dd>
+      ${u.available?`<dt>Pending update</dt><dd><b>${esc(u.latest)}</b> will be installed automatically</dd>`:''}
+      <dt>Status</dt><dd>${u.error?`<span style="color:var(--bad);font-weight:600">${esc(u.error)}</span>`:'Up to date'}</dd>`;
   };
   paintU();
-  uf.onsubmit=async e=>{e.preventDefault();umsg.textContent='Saving...';umsg.style.color='var(--muted)';
-    try{u=await api('/update',{method:'PUT',body:{url:uf.url.value.trim(),auto:uf.auto.checked}});S.update=u;paintU();paintUpdate(u);umsg.textContent='Update settings saved';umsg.style.color='var(--ok)'}
-    catch(err){umsg.textContent=err.message;umsg.style.color='var(--bad)'}};
-  $('#updCheck').onclick=async()=>{umsg.textContent='Checking...';umsg.style.color='var(--muted)';
-    try{u=await api('/update/check',{method:'POST',body:{url:uf.url.value.trim()}});S.update=u;paintU();paintUpdate(u);umsg.textContent=u.available?('Version '+u.latest+' is available'):'You are up to date';umsg.style.color='var(--ok)'}
-    catch(err){umsg.textContent=err.message;umsg.style.color='var(--bad)';try{u=await api('/update');paintU()}catch(e){}}};
-  $('#updInstall').onclick=installUpdate;
   $('#catAdd').onclick=()=>catDialog(null);
   $$('[data-edit]',el).forEach(b=>b.onclick=()=>catDialog(m.categories.find(c=>c.id==b.dataset.edit)));
   $$('[data-del]',el).forEach(b=>b.onclick=async()=>{const c=m.categories.find(x=>x.id==b.dataset.del);
@@ -5320,7 +5287,6 @@ function genPw(){const a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz234567
 
 function showLogin(msg){
   $$('dialog[open]').forEach(d=>d.close());
-  const ub=$('#updbar');if(ub){ub.hidden=true;ub.innerHTML=''}
   $('#login').hidden=false;document.body.style.overflow='hidden';
   const e=$('#loginErr');if(msg){e.hidden=false;e.textContent=msg}else e.hidden=true;
   const f=$('#loginForm');f.password.value='';S.user=null;
@@ -5331,8 +5297,7 @@ async function startApp(user){
   S.user=user;$('#login').hidden=true;document.body.style.overflow='';
   Object.assign(S.inv,{page:1,q:'',category:'',status:'',location:'',batch:'',warranty:''});clearSel();
   if(user.must_change){const ok=await passwordDialog(true);if(!ok)return;S.user.must_change=false}
-  await loadMeta();buildNav();paintUser();loadUpdate();
-  setTimeout(loadUpdate,15000);
+  await loadMeta();buildNav();paintUser();
   history.replaceState(null,'',location.pathname+'#/dashboard');route();
 }
 async function doLogout(){

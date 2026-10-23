@@ -1,17 +1,17 @@
 # Build a shareable BluePeak TAG Master installer and its update manifest.
 #
-#   .\build-release.ps1 -BaseUrl "https://your-site.example/downloads"
+#   .\build-release.ps1
 #
-# The installer is written to Output\BluePeak-TAG-Master-Setup.exe.
-# Upload that file and Output\update-manifest.json to the folder used for
-# BaseUrl, then paste the manifest URL into Settings > App updates.
+# The installer is written to Output\BluePeak-TAG-Master-Setup.exe and the
+# manifest to Output\update-manifest.json. The app already knows the update
+# feed (UPDATE_FEED_URL in bluepeak_tag_master.py); there is no setting to paste.
 #
 # The build folder (dist-release) never contains the live database, and the
 # installer is told never to overwrite *.db or the backups folder.
 
 [CmdletBinding()]
 param(
-    [string]$BaseUrl = "",
+    [string]$BaseUrl = "https://github.com/randallmoore397/tag-master/releases/latest/download",
     [string]$Notes = "",
     [string]$Python = "py",
     [string]$Iscc = ""
@@ -29,7 +29,7 @@ try {
     $notesText = if ($Notes) { $Notes } else {
         "BluePeak TAG Master $version"
     }
-    $base = if ($BaseUrl) { $BaseUrl.TrimEnd("/") } else { "https://example.com/downloads" }
+    $base = $BaseUrl.TrimEnd("/")
     if ($base -notmatch '^https://' -and $base -notmatch '^http://(127\.0\.0\.1|localhost)') {
         throw "BaseUrl must use https:// (or localhost for testing)."
     }
