@@ -56,7 +56,7 @@ if os.path.exists(_OLD_DB) and not os.path.exists(DB_PATH):
         if os.path.exists(_OLD_DB + _suffix):
             os.rename(_OLD_DB + _suffix, DB_PATH + _suffix)
 DEFAULT_PORT = 8765
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 SCHEMA_VERSION = 4
 UPDATE_MAX_BYTES = 250 * 1024 * 1024
 UPDATE_CHECK_HOURS = 12
@@ -4621,8 +4621,8 @@ function histHTML(history){
   if(!history.length)return '<li class="dim">No changes recorded yet.</li>';
   return history.map(h=>{
     const listy=h.changes&&h.changes.length&&!['Created','Deleted'].includes(h.action);
-    const body=listy?h.changes.map(c=>c.f==='Notes'?'<div class="chg-row"><span class="k">Notes</span><div class="v"><span class="dim">Edited</span></div></div>':`<div class="chg-row"><span class="k">${esc(c.f)}</span><div class="v"><span class="old">${esc(c.o||'empty')}</span><span class="arrow">→</span><b>${esc(c.n||'empty')}</b></div></div>`).join(''):`<div class="chg-row"><span class="k">Summary</span><div class="v"><span>${esc(h.details)}</span></div></div>`;
-    return `<li><header><div class="act"><span class="chip ${h.action==='Created'?'ok':h.action==='Deleted'?'bad':'info'}">${esc(h.action)}</span><b>${esc(h.action==='Created'?'Created':'Updated')}</b></div><div class="meta"><span>${esc(h.user||'system')}</span><span>•</span><time>${fmtDT(h.ts)}</time></div></header><div class="changes">${body}</div><div class="hist-foot"><span></span>${can('admin')&&h.id?`<button type="button" class="snap-link snap" data-aid="${h.id}">${icon('search',14)} View snapshot</button>`:''}</div></li>`}).join('');
+    const body=listy?h.changes.map(c=>c.f==='Notes'?'<div class="chg-row"><span class="k">Notes</span><div class="v"><span class="dim">Edited</span></div></div>':`<div class="chg-row"><span class="k">${esc(c.f)}</span><div class="v"><span class="old">${esc(c.o||'empty')}</span><span class="arrow">â†’</span><b>${esc(c.n||'empty')}</b></div></div>`).join(''):`<div class="chg-row"><span class="k">Summary</span><div class="v"><span>${esc(h.details)}</span></div></div>`;
+    return `<li><header><div class="act"><span class="chip ${h.action==='Created'?'ok':h.action==='Deleted'?'bad':'info'}">${esc(h.action)}</span><b>${esc(h.action==='Created'?'Created':'Updated')}</b></div><div class="meta"><span>${esc(h.user||'system')}</span><span>â€¢</span><time>${fmtDT(h.ts)}</time></div></header><div class="changes">${body}</div><div class="hist-foot"><span></span>${can('admin')&&h.id?`<button type="button" class="snap-link snap" data-aid="${h.id}">${icon('search',14)} View snapshot</button>`:''}</div></li>`}).join('');
 }
 function scanDialog(){
   const d=openDialog('dlgScan',`<form class="dlg sm" autocomplete="off"><h2>Scan or enter a tag</h2><p class="sub">Point a USB or Bluetooth barcode scanner at the label, or type the tag and press Enter. The device opens straight away.</p><label class="field" style="margin-top:14px"><span>Tag</span><input class="inp tagin" name="tag" required autofocus placeholder="BLUE-CHB-2026-0001" spellcheck="false"></label><div class="form-err" id="scErr" hidden style="margin-top:12px"></div><div class="dlg-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Open device</button></div></form>`);
