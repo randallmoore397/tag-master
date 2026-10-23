@@ -27,6 +27,7 @@ TIMEOUT = 45
 BATCH = 120
 SYNC_TABLES = ["settings", "categories", "counters", "users", "devices", "activity", "sessions"]
 PRIVATE_PREFIX = "cloud_"
+LOCAL_ONLY_SETTINGS = ("update_last_check", "update_latest", "update_notes", "update_error")
 DB_NAME_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,63}$")
 SQLITE_MAGIC = b"SQLite format 3\x00"
 
@@ -211,7 +212,9 @@ def push(cfg, db_path):
             data = [tuple(r) for r in src.execute('SELECT * FROM "%s"' % table)]
             if table == "settings" and "key" in cols:
                 ki = cols.index("key")
-                data = [r for r in data if not str(r[ki] or "").startswith(PRIVATE_PREFIX)]
+                data = [r for r in data
+                        if not str(r[ki] or "").startswith(PRIVATE_PREFIX)
+                        and str(r[ki] or "") not in LOCAL_ONLY_SETTINGS]
             prepared.append((table, ddl[0], info, cols, data))
         # Make sure every table and column exists before touching any rows.
         for table, ddl, info, cols, data in prepared:
@@ -305,7 +308,7 @@ def _pull_file(tmp, db_path):
         con.execute("PRAGMA foreign_keys=OFF")
         con.execute("BEGIN IMMEDIATE")
         keep = {r["key"]: r["value"] for r in con.execute(
-            "SELECT key,value FROM main.settings WHERE key LIKE ?", (PRIVATE_PREFIX + "%",))}
+            "SELECT key,value FROM main.settings WHERE " + _private_where())}
         for table in reversed(SYNC_TABLES):
             if table in present:
                 con.execute('DELETE FROM main."%s"' % table)
@@ -358,7 +361,7 @@ def _pull_sql(c, db_path):
         con.execute("PRAGMA foreign_keys=OFF")
         con.execute("BEGIN IMMEDIATE")
         keep = {r["key"]: r["value"] for r in con.execute(
-            "SELECT key,value FROM settings WHERE key LIKE ?", (PRIVATE_PREFIX + "%",))}
+            "SELECT key,value FROM settings WHERE " + _private_where())}
         for table in reversed(SYNC_TABLES):
             if table in present:
                 con.execute('DELETE FROM "%s"' % table)
@@ -418,8 +421,13 @@ def remote_tables(cfg):
     return table_names(_normalise(cfg))
 
 
+def _private_where(col="key"):
+    quoted = ", ".join("'%s'" % k for k in LOCAL_ONLY_SETTINGS)
+    return "%s LIKE '%s%%' OR %s IN (%s)" % (col, PRIVATE_PREFIX, col, quoted)
+
+
 def _fingerprint_table(con, table):
-    where = " WHERE key NOT LIKE '%s%%'" % PRIVATE_PREFIX if table == "settings" else ""
+    where = " WHERE NOT (%s)" % _private_where() if table == "settings" else ""
     cols = [r["name"] for r in con.execute('PRAGMA table_info("%s")' % table)]
     count = con.execute('SELECT COUNT(*) FROM "%s"%s' % (table, where)).fetchone()[0]
     if count <= 4000:

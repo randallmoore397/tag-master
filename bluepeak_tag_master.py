@@ -2954,7 +2954,7 @@ def backup_loop():
         time.sleep(3600)
 
 
-def cloud_run(kind, cfg):
+def cloud_run(kind, cfg, quiet=False):
     """One full sync step: 'push' copies local tables up, 'pull' copies them down."""
     if kind == "pull":
         _backup_local("before-pull")
@@ -2965,10 +2965,11 @@ def cloud_run(kind, cfg):
             res = bluepeak_cloud.pull(cfg, DB_PATH)
     con = connect()
     try:
-        what = "Pushed" if kind == "push" else "Pulled"
-        where = "to" if kind == "push" else "from"
-        log(con, "Sync", "%s %d rows %s SQLite Cloud (%s)" % (
-            what, res.get("rows", 0), where, ", ".join(res.get("tables", []))))
+        if not quiet:
+            what = "Pushed" if kind == "push" else "Pulled"
+            where = "to" if kind == "push" else "from"
+            log(con, "Sync", "%s %d rows %s SQLite Cloud (%s)" % (
+                what, res.get("rows", 0), where, ", ".join(res.get("tables", []))))
         if kind == "push":
             # Record the fingerprint of the exact snapshot that was uploaded, so
             # edits made while the upload was in flight are not marked as synced.
@@ -3648,9 +3649,9 @@ def _startup_sync(cfg):
         return
     try:
         if have & set(bluepeak_cloud.SYNC_TABLES):
-            cloud_run("pull", cfg)
+            cloud_run("pull", cfg, quiet=True)
         else:
-            cloud_run("push", cfg)
+            cloud_run("push", cfg, quiet=True)
     except Exception as e:
         _sync_error("start", e)
 
@@ -3678,7 +3679,7 @@ def cloud_loop():
                 last_auto = time.time()
                 try:
                     if bluepeak_cloud.fingerprint(DB_PATH) != (cfg["fp"] or ""):
-                        cloud_run("push", cfg)
+                        cloud_run("push", cfg, quiet=True)
                 except Exception as e:
                     _sync_error("auto", e)
         except Exception as e:
