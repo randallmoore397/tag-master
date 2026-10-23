@@ -3100,7 +3100,7 @@ def _fetch_update_manifest(url):
     except Exception as e:
         raise ApiError(400, "Could not reach the update server: %s" % e)
     try:
-        data = json.loads(raw.decode("utf-8"))
+        data = json.loads(raw.decode("utf-8-sig"))
     except Exception:
         raise ApiError(400, "The update file is not valid JSON.")
     if not isinstance(data, dict):

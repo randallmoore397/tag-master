@@ -79,7 +79,9 @@ try {
         notes   = $notesText
     }
     $manifestPath = Join-Path $root "Output\update-manifest.json"
-    $manifest | ConvertTo-Json -Depth 3 | Set-Content -Path $manifestPath -Encoding UTF8
+    $json = $manifest | ConvertTo-Json -Depth 3
+    # No BOM: the app parses this file as plain UTF-8 JSON.
+    [IO.File]::WriteAllText($manifestPath, $json, (New-Object System.Text.UTF8Encoding($false)))
 
     Write-Host ""
     Write-Host "Done."
